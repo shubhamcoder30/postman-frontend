@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Folder, ChevronRight, ChevronDown, Trash2, Edit2, Plus, Settings } from 'lucide-react';
 import { type RootState, type AppDispatch } from '../store';
+import type { Collection, Request } from '../types';
 import { setActiveRequest, removeCollection, updateCollection, addRequest, updateRequest, removeRequest } from '../store/slices/collectionSlice';
 import ConfirmModal from './ConfirmModal';
 import CollectionVariablesModal from './CollectionVariablesModal';
@@ -92,7 +93,7 @@ const CollectionList = () => {
 
     return (
         <div className="space-y-1">
-            {collections.map(collection => (
+            {collections.map((collection: Collection) => (
                 <div key={collection.id} className="mb-2">
                     <div className="flex items-center justify-between gap-1 px-3 py-2 hover:bg-white rounded-xl group transition-all cursor-pointer border border-transparent hover:border-slate-200 hover:shadow-sm">
                         <div
@@ -162,7 +163,7 @@ const CollectionList = () => {
                             {collection.requests.length === 0 && (
                                 <div className="text-[11px] text-slate-400 py-2 pl-2 italic">No requests in this collection</div>
                             )}
-                            {collection.requests.map(request => (
+                            {collection.requests.map((request: Request) => (
                                 <div
                                     key={request.id}
                                     className={`group w-full flex items-center justify-between gap-3 px-3 py-2 hover:bg-white rounded-xl cursor-pointer transition-all border border-transparent hover:border-slate-100 hover:shadow-sm ${activeRequestId === request.id ? 'bg-blue-50/50 border-blue-100 shadow-sm' : ''}`}

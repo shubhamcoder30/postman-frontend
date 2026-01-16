@@ -9,6 +9,7 @@ import CreateNewModal from './CreateNewModal';
 import { addCollection, addRequest, setActiveRequest, updateRequest, removeRequest } from '../store/slices/collectionSlice';
 import { parseCurl } from '../utils/curl';
 import type { RootState, AppDispatch } from '../store';
+import type { Request } from '../types';
 
 const Sidebar = () => {
     const dispatch = useDispatch<AppDispatch>();
@@ -83,7 +84,7 @@ const Sidebar = () => {
                         url: parsed.url,
                         headers: parsed.headers,
                         body: parsed.body,
-                        bodyType: parsed.bodyType,
+                        bodyType: parsed.bodyType as any,
                     })).unwrap();
                     toast.success("cURL imported as Draft");
                 } catch (error) {
@@ -191,7 +192,7 @@ const Sidebar = () => {
                     <div className="px-4 mb-4">
                         <p className="text-xs font-bold text-gray-500 uppercase mb-2 tracking-wider">Drafts</p>
                         <div className="space-y-1">
-                            {independentRequests.map((req: any) => (
+                            {independentRequests.map((req: Request) => (
                                 <div
                                     key={req.id}
                                     onClick={() => dispatch(setActiveRequest(req.id))}

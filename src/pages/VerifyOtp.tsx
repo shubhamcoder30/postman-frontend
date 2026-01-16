@@ -1,9 +1,10 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { authApi } from '../api/auth';
 import { KeyRound } from 'lucide-react';
 import InputField from '../components/InputField';
+import toast from 'react-hot-toast';
 
 const validationSchema = Yup.object({
     otp: Yup.string()
@@ -17,10 +18,10 @@ const validationSchema = Yup.object({
         .required('Please confirm your password'),
 });
 
-import toast from 'react-hot-toast';
-
 const VerifyOtp = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const email = location.state?.email || '';
 
     const formik = useFormik({
         initialValues: {
@@ -30,8 +31,14 @@ const VerifyOtp = () => {
         },
         validationSchema,
         onSubmit: async (values, { setSubmitting, setFieldError }) => {
+            if (!email) {
+                toast.error('Email missing. Please try again from forgot password.');
+                navigate('/forgot-password');
+                return;
+            }
+
             try {
-                await authApi.resetPassword(values.otp, values.newPassword);
+                await authApi.resetPassword(email, values.otp, values.newPassword);
 
                 toast.success('Password reset successfully! Please login.');
                 // Redirect to login with success message (could use toast here)
