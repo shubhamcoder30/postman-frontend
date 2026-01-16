@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Settings, Download, FolderPlus, Edit2, Trash2 } from 'lucide-react';
+import { Download, FolderPlus, Edit2, Trash2, Zap } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import CollectionList from './CollectionList';
 import ImportModal from './ImportModal';
@@ -38,8 +38,15 @@ const Sidebar = () => {
 
     const handleCreateCollection = async (name: string) => {
         try {
-            await dispatch(addCollection({ name })).unwrap();
+            const result = await dispatch(addCollection({ name })).unwrap();
             setIsCreateModalOpen(false);
+            if (result && result.id) {
+                // Expanding the new collection is handled by CollectionList 
+                // but since we want it immediately visible if it was just added
+                // we'll rely on the fact that Redux state updates.
+                // However, the 'expandedCollections' state is local to CollectionList.
+                // We'll add a toast or just let the user open it.
+            }
             toast.success('Collection created');
         } catch (error) {
             toast.error('Failed to create collection: ' + error);
@@ -103,7 +110,7 @@ const Sidebar = () => {
                                 allRequests.push({
                                     name: item.name || 'Untitled Request',
                                     method: item.request.method || 'GET',
-                                    url: item.request.url?.raw || '',
+                                    url: typeof item.request.url === 'string' ? item.request.url : item.request.url?.raw || '',
                                     headers,
                                     body: item.request.body?.raw || '',
                                     bodyType: item.request.body?.mode || 'none'
@@ -114,10 +121,16 @@ const Sidebar = () => {
                         }
                     };
 
+                    const variablesData = data.variable || data.variables || [];
+                    const variables = variablesData.map((v: any) => ({
+                        key: v.key,
+                        value: v.value
+                    }));
+
                     collectRequests(data.item);
 
                     try {
-                        await dispatch(addCollection({ name: collectionName, requests: allRequests })).unwrap();
+                        await dispatch(addCollection({ name: collectionName, requests: allRequests, variables })).unwrap();
                         toast.success(`Collection "${collectionName}" imported!`);
                     } catch (error) {
                         toast.error('Import failed: ' + error);
@@ -136,16 +149,22 @@ const Sidebar = () => {
             case 'GET': return 'text-green-500';
             case 'POST': return 'text-yellow-500';
             case 'PUT': return 'text-blue-500';
+            case 'PATCH': return 'text-purple-500';
             case 'DELETE': return 'text-red-500';
             default: return 'text-gray-500';
         }
     };
 
     return (
-        <aside className="w-64 bg-white flex flex-col h-full border-r border-gray-200">
-            <div className="p-4 border-b border-gray-200">
-                <div className="flex items-center justify-between mb-4">
-                    <h1 className="font-bold text-lg text-gray-900">Postman Clone</h1>
+        <aside className="w-72 bg-slate-50/50 flex flex-col h-full border-r border-slate-200">
+            <div className="p-6 border-b border-slate-200 bg-white/40 backdrop-blur-sm">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-600 rounded-lg text-white shadow-lg shadow-blue-500/30">
+                            <Zap size={20} fill="currentColor" />
+                        </div>
+                        <h1 className="font-extrabold text-xl text-slate-900 tracking-tight">Postman Clone</h1>
+                    </div>
                 </div>
                 <div className="flex gap-2">
                     <button

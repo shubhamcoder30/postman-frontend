@@ -1,4 +1,3 @@
-import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { X, Plus } from 'lucide-react';
 import type { RootState } from '../store';
@@ -6,15 +5,21 @@ import { setActiveRequest, closeRequest } from '../store/slices/collectionSlice'
 
 const RequestTabs = () => {
     const dispatch = useDispatch();
-    const { collections, openRequests, activeRequestId } = useSelector((state: RootState) => state.collections);
+    const { collections, independentRequests, openRequests, activeRequestId } = useSelector((state: RootState) => state.collections);
 
     // Helper to find request details by ID
     const getRequestDetails = (id: string) => {
+        // Search in collections
         for (const collection of collections) {
             const req = collection.requests.find(r => r.id === id);
             if (req) return req;
+            for (const folder of collection.folders) {
+                const freq = folder.requests.find(r => r.id === id);
+                if (freq) return freq;
+            }
         }
-        return null;
+        // Search in independent requests
+        return independentRequests.find(r => r.id === id) || null;
     };
 
     if (openRequests.length === 0) return null;
@@ -38,7 +43,8 @@ const RequestTabs = () => {
                         <span className={`text-[10px] font-bold ${req.method === 'GET' ? 'text-green-600' :
                             req.method === 'POST' ? 'text-blue-600' :
                                 req.method === 'DELETE' ? 'text-red-600' :
-                                    'text-yellow-600'
+                                    req.method === 'PATCH' ? 'text-purple-600' :
+                                        'text-yellow-600'
                             }`}>
                             {req.method}
                         </span>

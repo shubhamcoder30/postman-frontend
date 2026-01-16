@@ -6,13 +6,13 @@ interface Variable {
     value: string;
 }
 
-interface Environment {
+export interface Environment {
     id: string;
     name: string;
     variables: Variable[];
 }
 
-interface EnvironmentState {
+export interface EnvironmentState {
     environments: Environment[];
     activeEnvironmentId: string | null;
     status: 'idle' | 'loading' | 'succeeded' | 'failed';

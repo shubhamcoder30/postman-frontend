@@ -165,50 +165,65 @@ const RequestBuilder: React.FC<RequestBuilderProps> = ({ request, setRequest, on
     const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'];
 
     return (
-        <div className="space-y-4">
-            <div className="flex gap-2">
+        <div className="space-y-6">
+            <div className="flex gap-3">
                 {request.type === 'http' && (
-                    <select
-                        className="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={request.method}
-                        onChange={(e) => setRequest({ ...request, method: e.target.value })}
-                    >
-                        {methods.map((m) => (
-                            <option key={m} value={m}>{m}</option>
-                        ))}
-                    </select>
+                    <div className="relative group">
+                        <select
+                            className="appearance-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition-all hover:bg-white"
+                            value={request.method}
+                            onChange={(e) => setRequest({ ...request, method: e.target.value })}
+                        >
+                            {methods.map((m) => (
+                                <option key={m} value={m}>{m}</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                        </div>
+                    </div>
                 )}
-                <input
-                    type="text"
-                    placeholder="https://api.example.com/v1/resource"
-                    className="flex-1 bg-white border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={request.url}
-                    onChange={(e) => setRequest({ ...request, url: e.target.value })}
-                />
+                <div className="flex-1 relative group">
+                    <input
+                        type="text"
+                        placeholder="https://api.example.com/v1/resource"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all group-hover:bg-white font-medium"
+                        value={request.url}
+                        onChange={(e) => setRequest({ ...request, url: e.target.value })}
+                    />
+                </div>
                 <button
-                    className={`px-4 py-2 text-white rounded-md font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors ${request.type === 'http' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'}`}
+                    className={`btn px-8 flex items-center gap-2 ${request.type === 'http' ? 'btn-primary' : 'bg-green-600 text-white hover:bg-green-700 shadow-green-500/20'}`}
                     onClick={onSend}
                     disabled={isLoading || !request.url}
                 >
-                    {isLoading ? (request.type === 'http' ? 'Sending...' : 'Connecting...') : (
+                    {isLoading ? (
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>{request.type === 'http' ? 'Sending' : 'Connecting'}</span>
+                        </div>
+                    ) : (
                         <>
                             <span>{request.type === 'http' ? 'Send' : 'Connect'}</span>
-                            <Send size={16} />
+                            <Send size={18} />
                         </>
                     )}
                 </button>
             </div>
 
-            <div className="border border-gray-300 rounded-md bg-white">
-                <div className="flex border-b border-gray-300 bg-gray-50">
+            <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+                <div className="flex border-b border-slate-100 bg-slate-50/50 px-2">
                     {(['params', 'headers', 'body', 'auth', 'scripts'] as const).map((tab) => (
                         <button
                             key={tab}
-                            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 hover:text-blue-600 ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'
+                            className={`px-6 py-3 text-xs font-bold uppercase tracking-wider transition-all relative ${activeTab === tab ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
                                 }`}
                             onClick={() => setActiveTab(tab)}
                         >
-                            {tab === 'scripts' ? 'Scripts' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            {tab === 'scripts' ? 'Scripts' : tab}
+                            {activeTab === tab && (
+                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full animate-in fade-in slide-in-from-bottom-1" />
+                            )}
                         </button>
                     ))}
                 </div>

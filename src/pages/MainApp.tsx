@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import RequestBuilder from '../components/RequestBuilder';
@@ -8,17 +7,17 @@ import EnvironmentSwitcher from '../components/EnvironmentSwitcher';
 import { API_BASE_URL } from '../api/config';
 import RequestTabs from '../components/RequestTabs';
 import { substituteVariables } from '../utils/variables';
-import { LogOut } from 'lucide-react';
+import { LogOut, Send } from 'lucide-react';
 import { runPreRequestScript } from '../utils/scripts';
 import { io, Socket } from 'socket.io-client';
-import type { RootState, AppDispatch } from '../store';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { fetchCollections, fetchIndependentRequests, updateRequest } from '../store/slices/collectionSlice';
 
 const MainApp = () => {
     const navigate = useNavigate();
-    const dispatch = useDispatch<AppDispatch>();
-    const { collections, independentRequests, activeRequestId } = useSelector((state: RootState) => state.collections);
-    const { environments, activeEnvironmentId } = useSelector((state: RootState) => state.environments);
+    const dispatch = useAppDispatch();
+    const { collections, independentRequests, activeRequestId } = useAppSelector((state: any) => state.collections);
+    const { environments, activeEnvironmentId } = useAppSelector((state: any) => state.environments);
 
     useEffect(() => {
         dispatch(fetchCollections());
@@ -136,7 +135,10 @@ const MainApp = () => {
             if (request.type === 'http' || !request.type) {
                 const res = await fetch(`${API_BASE_URL}/proxy`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                    },
                     body: JSON.stringify({
                         url: finalUrl,
                         method: request.method,
@@ -271,23 +273,28 @@ const MainApp = () => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
     return (
-        <div className="flex h-screen bg-gray-50 text-gray-900">
+        <div className="flex h-screen bg-slate-100/50 text-slate-900 overflow-hidden font-sans pb-12">
             <Sidebar />
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 bg-white/40 backdrop-blur-xl">
                 {/* Header */}
-                <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm z-10 relative">
-                    <div className="flex items-center gap-4">
-                        <h1 className="text-xl font-bold text-gray-900">Postman Clone</h1>
+                <header className="h-16 flex items-center justify-between px-8 bg-white/80 border-b border-slate-200 backdrop-blur-lg z-10 shadow-sm">
+                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                        <h1 className="text-xl font-extrabold text-slate-900 tracking-tight shrink-0">Postman Clone</h1>
+                        <div className="h-6 w-[1px] bg-slate-200 hidden md:block" />
                         <EnvironmentSwitcher />
                     </div>
                     <div className="flex items-center gap-4">
-                        <span className="text-sm text-gray-600 font-medium">{user.email}</span>
+                        <div className="flex flex-col items-end hidden sm:flex">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Authenticated as</span>
+                            <span className="text-sm font-semibold text-slate-700">{user.email}</span>
+                        </div>
+                        <div className="h-8 w-[1px] bg-slate-200 mx-2 hidden sm:block" />
                         <button
                             onClick={handleLogout}
-                            className="flex items-center gap-2 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md text-sm transition-colors border border-red-200"
+                            className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all font-semibold active:scale-95"
                         >
-                            <LogOut size={16} />
-                            Logout
+                            <LogOut size={18} />
+                            <span>Logout</span>
                         </button>
                     </div>
                 </header>
@@ -295,28 +302,41 @@ const MainApp = () => {
                 <RequestTabs />
 
                 {/* Main Content */}
-                <div className="flex-1 overflow-auto p-6 bg-gray-50">
-                    <div className="max-w-7xl mx-auto space-y-6">
+                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                    <div className="max-w-6xl mx-auto space-y-8 pb-12">
                         {activeRequestId ? (
                             <>
-                                <RequestBuilder
-                                    request={request}
-                                    setRequest={setRequest}
-                                    onSend={handleSendRequest}
-                                    isLoading={isLoading}
-                                />
-                                {(response || wsMessages.length > 0) && (
-                                    <ResponseViewer
-                                        type={request.type}
-                                        response={response}
-                                        messages={wsMessages}
-                                        onSendMessage={handleSendMessage}
+                                <section className="premium-card p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Request Configuration</h2>
+                                    <RequestBuilder
+                                        request={request}
+                                        setRequest={setRequest}
+                                        onSend={handleSendRequest}
+                                        isLoading={isLoading}
                                     />
+                                </section>
+
+                                {(response || wsMessages.length > 0) && (
+                                    <section className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+                                        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Response Viewer</h2>
+                                        <ResponseViewer
+                                            type={request.type}
+                                            response={response}
+                                            messages={wsMessages}
+                                            onSendMessage={handleSendMessage}
+                                        />
+                                    </section>
                                 )}
                             </>
                         ) : (
-                            <div className="flex items-center justify-center h-full text-gray-400">
-                                <p>Select a request or create a new one</p>
+                            <div className="flex flex-col items-center justify-center h-[60vh] text-slate-300 animate-in fade-in zoom-in duration-500">
+                                <div className="p-8 bg-white rounded-3xl shadow-xl shadow-slate-200/50 mb-6 border border-slate-100">
+                                    <Send size={64} className="text-blue-500/20" />
+                                </div>
+                                <h3 className="text-2xl font-bold text-slate-800 mb-3">Ready to explore?</h3>
+                                <p className="max-w-xs text-center text-slate-500 font-medium leading-relaxed">
+                                    Select a request from the sidebar or click <span className="text-blue-600 font-bold">"New"</span> to start testing your APIs with Postman Clone.
+                                </p>
                             </div>
                         )}
                     </div>

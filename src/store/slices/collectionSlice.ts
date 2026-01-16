@@ -83,7 +83,7 @@ export const fetchIndependentRequests = createAsyncThunk(
 
 export const addNewCollection = createAsyncThunk(
     'collections/addNewCollection',
-    async ({ name, requests }: { name: string; requests?: any[] }, { rejectWithValue }) => {
+    async ({ name, requests, variables }: { name: string; requests?: any[]; variables?: any[] }, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
             const response = await fetch(`${API_BASE_URL}/collections`, {
@@ -92,7 +92,7 @@ export const addNewCollection = createAsyncThunk(
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({ name, requests }),
+                body: JSON.stringify({ name, requests, variables }),
             });
             if (!response.ok) throw new Error('Failed to create collection');
             const data = await response.json();
@@ -288,8 +288,20 @@ const collectionSlice = createSlice({
                 state.collections.push({
                     ...newCollection,
                     id: String(newCollection.id),
-                    requests: [],
-                    folders: []
+                    variables: newCollection.variables || [],
+                    requests: (newCollection.requests || []).map((r: any) => ({
+                        ...r,
+                        id: String(r.id),
+                        body: typeof r.body === 'object' ? JSON.stringify(r.body) : r.body || ''
+                    })),
+                    folders: (newCollection.folders || []).map((f: any) => ({
+                        ...f,
+                        requests: (f.requests || []).map((r: any) => ({
+                            ...r,
+                            id: String(r.id),
+                            body: typeof r.body === 'object' ? JSON.stringify(r.body) : r.body || ''
+                        }))
+                    }))
                 });
             })
             // Remove Collection

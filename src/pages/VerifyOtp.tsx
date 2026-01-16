@@ -1,4 +1,4 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { authApi } from '../api/auth';
@@ -21,8 +21,6 @@ import toast from 'react-hot-toast';
 
 const VerifyOtp = () => {
     const navigate = useNavigate();
-    const location = useLocation();
-    const email = location.state?.email; // Get email from navigation state if needed
 
     const formik = useFormik({
         initialValues: {
