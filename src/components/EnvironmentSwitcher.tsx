@@ -42,7 +42,7 @@ const EnvironmentSwitcher = () => {
     return (
         <div className="flex items-center gap-2">
             <Globe size={16} className="text-gray-500" />
-            <select
+            {/* <select
                 className="bg-gray-100 border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[120px]"
                 value={activeEnvironmentId || ''}
                 onChange={(e) => dispatch(setActiveEnvironment(e.target.value || null))}
@@ -75,15 +75,15 @@ const EnvironmentSwitcher = () => {
                         }}
                     />
                 </div>
-            )}
-
+            )} */}
+            {/* 
             <button
                 onClick={() => setIsModalOpen(true)}
                 disabled={!activeEnvironmentId}
                 className="p-1 hover:bg-gray-200 rounded border border-gray-300 text-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 <Settings size={14} />
-            </button>
+            </button> */}
 
             {activeEnv && (
                 <EnvironmentModal

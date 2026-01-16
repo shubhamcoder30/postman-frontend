@@ -57,7 +57,6 @@ const VerifyOtp = () => {
                 <p className="text-gray-400 text-center mb-6">
                     Enter the OTP sent to your email and set a new password.
                     <br />
-                    <span className="text-sm text-yellow-500">(Use 123456 for testing)</span>
                 </p>
 
                 <form onSubmit={formik.handleSubmit} className="space-y-4">
