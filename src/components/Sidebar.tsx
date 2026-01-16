@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Settings, Star, Download, FolderPlus, Edit2 } from 'lucide-react';
+import { Settings, Download, FolderPlus, Edit2, Trash2 } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import CollectionList from './CollectionList';
 import ImportModal from './ImportModal';
 import CreateCollectionModal from './CreateCollectionModal';
 import CreateNewModal from './CreateNewModal';
-import { addCollection, addRequest, setActiveRequest, updateRequest } from '../store/slices/collectionSlice';
+import { addCollection, addRequest, setActiveRequest, updateRequest, removeRequest } from '../store/slices/collectionSlice';
 import { parseCurl } from '../utils/curl';
 import type { RootState, AppDispatch } from '../store';
 
@@ -38,7 +38,7 @@ const Sidebar = () => {
 
     const handleCreateCollection = async (name: string) => {
         try {
-            await dispatch(addCollection(name)).unwrap();
+            await dispatch(addCollection({ name })).unwrap();
             setIsCreateModalOpen(false);
             toast.success('Collection created');
         } catch (error) {
@@ -51,13 +51,17 @@ const Sidebar = () => {
             setIsCreateModalOpen(true);
         } else {
             try {
-                // Create independent request
                 await dispatch(addRequest({ type, name: 'New Request' })).unwrap();
                 toast.success('Request created');
             } catch (error) {
                 toast.error('Failed to create request: ' + error);
             }
         }
+    };
+
+    const handleDeleteDraft = (id: string) => {
+        dispatch(removeRequest(id));
+        toast.success('Draft removed');
     };
 
     const handleImport = async (content: string, type: 'json' | 'curl') => {
@@ -84,65 +88,45 @@ const Sidebar = () => {
         } else {
             try {
                 const data = JSON.parse(content);
-                // Handle Postman collection format
                 if (data.info && data.item) {
                     const collectionName = data.info.name || 'Imported Collection';
+                    const allRequests: any[] = [];
 
-                    try {
-                        // Create Collection
-                        const newCollection = await dispatch(addCollection(collectionName)).unwrap();
-
-                        if (!newCollection || !newCollection.id) {
-                            throw new Error('Collection was created but server did not return a valid ID.');
-                        }
-
-                        const collectionId = String(newCollection.id);
-
-                        // Create Requests
-                        for (const item of data.item) {
+                    const collectRequests = (items: any[]) => {
+                        for (const item of items) {
                             if (item.request) {
-                                const reqName = item.name || 'Untitled Request';
-                                const method = item.request.method || 'GET';
-                                const url = item.request.url?.raw || '';
                                 const headers = (item.request.header || []).map((h: any) => ({
                                     key: h.key,
                                     value: h.value,
                                     enabled: true
                                 }));
-
-                                let body = '';
-                                let bodyType = 'none';
-
-                                if (item.request.body) {
-                                    bodyType = item.request.body.mode || 'none';
-                                    if (bodyType === 'raw') {
-                                        body = item.request.body.raw || '';
-                                    } else if (bodyType === 'formdata') {
-                                        body = JSON.stringify(item.request.body.formdata || []);
-                                    }
-                                }
-
-                                await dispatch(addRequest({
-                                    collectionId,
-                                    type: 'http',
-                                    name: reqName,
-                                    method,
-                                    url,
+                                allRequests.push({
+                                    name: item.name || 'Untitled Request',
+                                    method: item.request.method || 'GET',
+                                    url: item.request.url?.raw || '',
                                     headers,
-                                    body,
-                                    bodyType
-                                })).unwrap();
+                                    body: item.request.body?.raw || '',
+                                    bodyType: item.request.body?.mode || 'none'
+                                });
+                            } else if (item.item && Array.isArray(item.item)) {
+                                collectRequests(item.item);
                             }
                         }
+                    };
+
+                    collectRequests(data.item);
+
+                    try {
+                        await dispatch(addCollection({ name: collectionName, requests: allRequests })).unwrap();
                         toast.success(`Collection "${collectionName}" imported!`);
                     } catch (error) {
                         toast.error('Import failed: ' + error);
                     }
                 } else {
-                    toast.error('Invalid Postman Collection format');
+                    toast.error("Invalid Postman collection format");
                 }
-            } catch (e) {
-                toast.error("Invalid JSON");
+            } catch (error) {
+                toast.error("Failed to parse JSON content");
             }
         }
     };
@@ -210,12 +194,23 @@ const Sidebar = () => {
                                             <span className={`text-sm truncate ${activeRequestId === req.id ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>{req.name}</span>
                                         )}
                                     </div>
-                                    <button
-                                        onClick={(e) => startEditing(req.id, req.name, e)}
-                                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600 transition-all"
-                                    >
-                                        <Edit2 size={12} />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={(e) => startEditing(req.id, req.name, e)}
+                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600 transition-all"
+                                        >
+                                            <Edit2 size={12} />
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteDraft(req.id);
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-red-500 transition-all"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -235,28 +230,15 @@ const Sidebar = () => {
                     </div>
                     <CollectionList />
                 </div>
-                <div className="px-4 mb-4">
-                    <p className="text-xs font-bold text-gray-500 uppercase mb-2 tracking-wider">History</p>
-                    <div className="space-y-1 text-sm text-gray-400 italic p-2">
-                        No recent history
-                    </div>
-                </div>
             </nav>
-            <div className="p-4 border-t border-gray-200 space-y-2">
-                {/* <button className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 rounded text-sm text-gray-600 hover:text-gray-900 transition-colors">
-                    <Star size={16} />
-                    <span>Favorites</span>
-                </button>
-                <button className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 rounded text-sm text-gray-600 hover:text-gray-900 transition-colors">
-                    <Settings size={16} />
-                    <span>Settings</span>
-                </button> */}
-            </div>
 
             <ImportModal
                 isOpen={isImportModalOpen}
                 onClose={() => setIsImportModalOpen(false)}
-                onImport={handleImport}
+                onImport={(content, type) => {
+                    handleImport(content, type);
+                    setIsImportModalOpen(false);
+                }}
             />
             <CreateCollectionModal
                 isOpen={isCreateModalOpen}

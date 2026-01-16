@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import RequestBuilder from '../components/RequestBuilder';
 import ResponseViewer from '../components/ResponseViewer';
 import EnvironmentSwitcher from '../components/EnvironmentSwitcher';
+import { API_BASE_URL } from '../api/config';
 import RequestTabs from '../components/RequestTabs';
 import { substituteVariables } from '../utils/variables';
 import { LogOut } from 'lucide-react';
@@ -80,31 +81,41 @@ const MainApp = () => {
             let finalBody = request.body;
             let finalHeaders = [...(request.headers || [])];
 
-            if (activeEnv) {
-                finalUrl = substituteVariables(request.url, activeEnv.variables);
+            // Resolve variables: Collection level first, then Environment (env overrides collection)
+            const collection = collections.find((c: any) =>
+                c.requests.some((r: any) => r.id === request.id) ||
+                c.folders.some((f: any) => f.requests.some((r: any) => r.id === request.id))
+            );
+
+            const allVars = [
+                ...(collection?.variables || []),
+                ...(activeEnv?.variables || [])
+            ];
+
+            if (allVars.length > 0) {
+                finalUrl = substituteVariables(request.url, allVars);
                 if (request.body) {
-                    finalBody = substituteVariables(request.body, activeEnv.variables);
+                    finalBody = substituteVariables(request.body, allVars);
                 }
                 finalHeaders = finalHeaders.map(h => ({
-                    key: substituteVariables(h.key, activeEnv.variables),
-                    value: substituteVariables(h.value, activeEnv.variables)
+                    key: substituteVariables(h.key, allVars),
+                    value: substituteVariables(h.value, allVars)
                 }));
 
                 // Handle Auth substitution
                 if (request.auth) {
                     if (request.auth.type === 'bearer' && request.auth.bearer?.token) {
-                        const token = substituteVariables(request.auth.bearer.token, activeEnv.variables);
+                        const token = substituteVariables(request.auth.bearer.token, allVars);
                         finalHeaders.push({ key: 'Authorization', value: `Bearer ${token}` });
                     } else if (request.auth.type === 'basic' && request.auth.basic) {
-                        const user = substituteVariables(request.auth.basic.username || '', activeEnv.variables);
-                        const pass = substituteVariables(request.auth.basic.password || '', activeEnv.variables);
+                        const user = substituteVariables(request.auth.basic.username || '', allVars);
+                        const pass = substituteVariables(request.auth.basic.password || '', allVars);
                         const encoded = btoa(`${user}:${pass}`);
                         finalHeaders.push({ key: 'Authorization', value: `Basic ${encoded}` });
                     }
                 }
             }
-
-            const res = await fetch('/api/proxy', {
+            const res = await fetch(`${API_BASE_URL}/proxy`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -132,7 +143,7 @@ const MainApp = () => {
 
     const handleLogout = async () => {
         try {
-            await fetch('/api/auth/logout', {
+            await fetch(`${API_BASE_URL}/auth/logout`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('authToken')}`

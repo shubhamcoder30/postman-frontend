@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
+import { API_BASE_URL } from '../../api/config';
 
 interface Variable {
     key: string;
@@ -28,7 +29,7 @@ export const fetchEnvironments = createAsyncThunk(
     async (_, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch('/api/environments', {
+            const response = await fetch(`${API_BASE_URL}/environments`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Failed to fetch environments');
@@ -45,7 +46,7 @@ export const createEnvironment = createAsyncThunk(
     async (name: string, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch('/api/environments', {
+            const response = await fetch(`${API_BASE_URL}/environments`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -67,7 +68,7 @@ export const updateEnvironment = createAsyncThunk(
     async ({ id, name, variables }: { id: string; name?: string; variables?: Variable[] }, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch(`/api/environments/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/environments/${id}`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,

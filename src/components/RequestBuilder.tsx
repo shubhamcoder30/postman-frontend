@@ -14,6 +14,8 @@ interface Request {
     };
     bodyType?: 'none' | 'json' | 'form-data' | 'raw';
     id?: string;
+    type: 'http' | 'websocket' | 'socketio';
+    preRequestScript?: string;
 }
 
 interface RequestBuilderProps {
@@ -165,15 +167,17 @@ const RequestBuilder: React.FC<RequestBuilderProps> = ({ request, setRequest, on
     return (
         <div className="space-y-4">
             <div className="flex gap-2">
-                <select
-                    className="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={request.method}
-                    onChange={(e) => setRequest({ ...request, method: e.target.value })}
-                >
-                    {methods.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                    ))}
-                </select>
+                {request.type === 'http' && (
+                    <select
+                        className="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={request.method}
+                        onChange={(e) => setRequest({ ...request, method: e.target.value })}
+                    >
+                        {methods.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                        ))}
+                    </select>
+                )}
                 <input
                     type="text"
                     placeholder="https://api.example.com/v1/resource"
@@ -182,13 +186,13 @@ const RequestBuilder: React.FC<RequestBuilderProps> = ({ request, setRequest, on
                     onChange={(e) => setRequest({ ...request, url: e.target.value })}
                 />
                 <button
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                    className={`px-4 py-2 text-white rounded-md font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors ${request.type === 'http' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'}`}
                     onClick={onSend}
                     disabled={isLoading || !request.url}
                 >
-                    {isLoading ? 'Sending...' : (
+                    {isLoading ? (request.type === 'http' ? 'Sending...' : 'Connecting...') : (
                         <>
-                            <span>Send</span>
+                            <span>{request.type === 'http' ? 'Send' : 'Connect'}</span>
                             <Send size={16} />
                         </>
                     )}
@@ -197,14 +201,14 @@ const RequestBuilder: React.FC<RequestBuilderProps> = ({ request, setRequest, on
 
             <div className="border border-gray-300 rounded-md bg-white">
                 <div className="flex border-b border-gray-300 bg-gray-50">
-                    {(['params', 'headers', 'body', 'auth'] as const).map((tab) => (
+                    {(['params', 'headers', 'body', 'auth', 'scripts'] as const).map((tab) => (
                         <button
                             key={tab}
                             className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 hover:text-blue-600 ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'
                                 }`}
                             onClick={() => setActiveTab(tab)}
                         >
-                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            {tab === 'scripts' ? 'Scripts' : tab.charAt(0).toUpperCase() + tab.slice(1)}
                         </button>
                     ))}
                 </div>
@@ -279,6 +283,22 @@ const RequestBuilder: React.FC<RequestBuilderProps> = ({ request, setRequest, on
                         </div>
                     )}
 
+                    {activeTab === 'scripts' && (
+                        <div className="space-y-4 h-full flex flex-col">
+                            <div>
+                                <h3 className="text-sm font-medium text-gray-700 mb-1">Pre-request Script</h3>
+                                <p className="text-xs text-gray-500 mb-3">JavaScript code to run before the request is sent. Use <code>pm.variables.set(key, value)</code> to set variables.</p>
+                                <div className="border border-gray-200 rounded p-2 bg-gray-50 h-64">
+                                    <textarea
+                                        className="w-full h-full bg-transparent resize-none focus:outline-none font-mono text-sm text-gray-900"
+                                        placeholder="// Example: pm.variables.set('timestamp', Date.now());"
+                                        value={request.preRequestScript || ''}
+                                        onChange={(e) => setRequest({ ...request, preRequestScript: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     {activeTab === 'body' && (
                         <div className="space-y-4 h-full flex flex-col">
                             <div className="flex items-center gap-4">

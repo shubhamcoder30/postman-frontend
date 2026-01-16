@@ -14,7 +14,7 @@ interface Environment {
 
 const EnvironmentSwitcher = () => {
     const dispatch = useDispatch<AppDispatch>();
-    const { environments, activeEnvironmentId, status } = useSelector((state: RootState) => state.environments);
+    const { environments, activeEnvironmentId, status } = useSelector((state: RootState) => state.environments as any);
     const [isAdding, setIsAdding] = useState(false);
     const [newEnvName, setNewEnvName] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);

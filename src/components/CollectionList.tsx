@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Folder, ChevronRight, ChevronDown, Trash2, Edit2, Plus } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Trash2, Edit2, Plus, Settings } from 'lucide-react';
 import { type RootState, type AppDispatch } from '../store';
 import { setActiveRequest, removeCollection, updateCollection, addRequest, updateRequest } from '../store/slices/collectionSlice';
 import ConfirmModal from './ConfirmModal';
+import CollectionVariablesModal from './CollectionVariablesModal';
 import toast from 'react-hot-toast';
 
 const CollectionList = () => {
@@ -13,6 +14,7 @@ const CollectionList = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState('');
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+    const [variablesModalCollection, setVariablesModalCollection] = useState<any | null>(null);
 
     const toggleExpand = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -118,6 +120,16 @@ const CollectionList = () => {
                                 <Plus size={14} />
                             </button>
                             <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setVariablesModalCollection(collection);
+                                }}
+                                className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-blue-500"
+                                title="Collection Variables"
+                            >
+                                <Settings size={14} />
+                            </button>
+                            <button
                                 onClick={(e) => startEditing(collection.id, collection.name, e)}
                                 className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
                                 title="Rename"
@@ -189,6 +201,14 @@ const CollectionList = () => {
                 confirmText="Delete"
                 type="danger"
             />
+
+            {variablesModalCollection && (
+                <CollectionVariablesModal
+                    isOpen={!!variablesModalCollection}
+                    onClose={() => setVariablesModalCollection(null)}
+                    collection={variablesModalCollection}
+                />
+            )}
         </div>
     );
 };

@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
+import { API_BASE_URL } from '../../api/config';
 
 interface Request {
     id: string;
@@ -8,6 +9,8 @@ interface Request {
     headers: any[];
     body: string;
     bodyType?: string;
+    type: 'http' | 'websocket' | 'socketio';
+    preRequestScript?: string;
     collectionId?: string | number | null;
 }
 
@@ -22,6 +25,7 @@ interface Collection {
     name: string;
     folders: Folder[];
     requests: Request[];
+    variables?: any[];
 }
 
 interface CollectionState {
@@ -48,7 +52,7 @@ export const fetchCollections = createAsyncThunk(
     async (_, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch('/api/collections', {
+            const response = await fetch(`${API_BASE_URL}/collections`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (!response.ok) throw new Error('Failed to fetch collections');
@@ -65,7 +69,7 @@ export const fetchIndependentRequests = createAsyncThunk(
     async (_, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch('/api/requests', {
+            const response = await fetch(`${API_BASE_URL}/requests`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (!response.ok) throw new Error('Failed to fetch requests');
@@ -79,16 +83,16 @@ export const fetchIndependentRequests = createAsyncThunk(
 
 export const addNewCollection = createAsyncThunk(
     'collections/addNewCollection',
-    async (name: string, { rejectWithValue }) => {
+    async ({ name, requests }: { name: string; requests?: any[] }, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch('/api/collections', {
+            const response = await fetch(`${API_BASE_URL}/collections`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ name, requests }),
             });
             if (!response.ok) throw new Error('Failed to create collection');
             const data = await response.json();
@@ -104,7 +108,7 @@ export const removeCollectionAsync = createAsyncThunk(
     async (id: string, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch(`/api/collections/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/collections/${id}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -141,7 +145,7 @@ export const addNewRequest = createAsyncThunk(
     }, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch('/api/requests', {
+            const response = await fetch(`${API_BASE_URL}/requests`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -170,16 +174,16 @@ export const addNewRequest = createAsyncThunk(
 
 export const updateCollectionAsync = createAsyncThunk(
     'collections/updateCollectionAsync',
-    async ({ id, name }: { id: string; name: string }, { rejectWithValue }) => {
+    async ({ id, name, variables }: { id: string; name?: string; variables?: any[] }, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch(`/api/collections/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/collections/${id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ name, variables }),
             });
             if (!response.ok) throw new Error('Failed to update collection');
             const data = await response.json();
@@ -195,7 +199,7 @@ export const updateRequestAsync = createAsyncThunk(
     async (request: Partial<Request> & { id: string }, { rejectWithValue }) => {
         try {
             const token = localStorage.getItem('authToken');
-            const response = await fetch(`/api/requests/${request.id}`, {
+            const response = await fetch(`${API_BASE_URL}/requests/${request.id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -206,6 +210,23 @@ export const updateRequestAsync = createAsyncThunk(
             if (!response.ok) throw new Error('Failed to update request');
             const data = await response.json();
             return data.data;
+        } catch (error: any) {
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
+export const removeRequestAsync = createAsyncThunk(
+    'collections/removeRequestAsync',
+    async (id: string, { rejectWithValue }) => {
+        try {
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(`${API_BASE_URL}/requests/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!response.ok) throw new Error('Failed to delete request');
+            return id;
         } catch (error: any) {
             return rejectWithValue(error.message);
         }
@@ -302,7 +323,8 @@ const collectionSlice = createSlice({
                 const updated = action.payload;
                 const collection = state.collections.find(c => c.id === String(updated.id));
                 if (collection) {
-                    collection.name = updated.name;
+                    if (updated.name) collection.name = updated.name;
+                    if (updated.variables) collection.variables = updated.variables;
                 }
             })
             // Update Request
@@ -335,6 +357,23 @@ const collectionSlice = createSlice({
                         }
                     }
                 }
+            })
+            // Remove Request
+            .addCase(removeRequestAsync.fulfilled, (state, action) => {
+                const id = action.payload;
+                state.independentRequests = state.independentRequests.filter(r => r.id !== id);
+                for (const collection of state.collections) {
+                    collection.requests = collection.requests.filter(r => r.id !== id);
+                    for (const folder of collection.folders) {
+                        folder.requests = folder.requests.filter(r => r.id !== id);
+                    }
+                }
+                state.openRequests = state.openRequests.filter(rid => rid !== id);
+                if (state.activeRequestId === id) {
+                    state.activeRequestId = state.openRequests.length > 0
+                        ? state.openRequests[state.openRequests.length - 1]
+                        : null;
+                }
             });
     },
 });
@@ -346,5 +385,6 @@ export const removeCollection = removeCollectionAsync;
 export const updateCollection = updateCollectionAsync;
 export const addRequest = addNewRequest;
 export const updateRequest = updateRequestAsync;
+export const removeRequest = removeRequestAsync;
 
 export default collectionSlice.reducer;

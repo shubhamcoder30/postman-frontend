@@ -19,9 +19,9 @@ const EnvironmentModal: React.FC<EnvironmentModalProps> = ({ isOpen, onClose, en
     useEffect(() => {
         if (environment) {
             setName(environment.name);
-            setVariables(environment.variables || []);
+            setVariables((environment.variables || []).map((v: any) => ({ ...v })));
         }
-    }, [environment]);
+    }, [environment, isOpen]);
 
     if (!isOpen || !environment) return null;
 
