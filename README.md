@@ -1,56 +1,93 @@
-# Postman Clone - Frontend (Client)
+# Postman Clone - Client Application
 
-A modern, premium-designed API testing tool built with React and Vite. This application allows users to test HTTP endpoints, manage collections, and organize API environments.
+The frontend application for the Postman Clone, built with **React**, **Vite**, and **TypeScript**. It provides a premium, responsive interface for API testing and management.
 
-## Tech Stack
-- **Framework**: React 19
-- **Build Tool**: Vite
-- **Styling**: Tailwind CSS (Premium Modern Design)
-- **State Management**: Redux Toolkit
+## 🛠️ Tech Stack
+
+- **Core**: React 19, Vite, TypeScript
+- **State Management**: Redux Toolkit (with RTK Thunks)
+- **Routing**: React Router DOM v7
+- **Styling**: Tailwind CSS, PostCSS, SCSS (custom utilities)
+- **HTTP Client**: Axios
+- **Real-Time**: Socket.IO Client
+- **Forms**: Formik, Yup validation
 - **Icons**: Lucide React
-- **HTTP Client**: Axios / Native Fetch
-- **Communication**: Socket.IO Client (for WebSocket testing)
 
-## Prerequisites
-- Node.js (v18 or higher recommended)
-- npm or yarn
+## 📂 Directory Structure
 
-## Getting Started
-
-### 1. Installation
-Navigate to the client directory and install dependencies:
-```bash
-npm install
+```
+src/
+├── api/                # Axios instance and API config
+├── assets/             # Static images and global styles
+├── components/         # Reusable UI components
+│   ├── RequestBuilder/ # Core component for composing requests
+│   ├── ResponseViewer/ # Component to display API responses
+│   └── ...
+├── pages/              # Main route pages (Login, MainApp, etc.)
+├── store/              # Redux setup
+│   ├── slices/         # State slices (auth, collection, environment)
+│   └── hooks.ts        # Typed Redux hooks
+├── types/              # Centralized TypeScript interfaces
+└── utils/              # Helpers (variable substitution, local storage)
 ```
 
-### 2. Configure API Endpoint
-In the `client` directory, ensure the `src/config.ts` or relevant environment file points to your backend server (default is `http://localhost:3000`).
+## 🚀 Getting Started
 
-### 3. Running the Application
+### Prerequisites
+- Node.js (v18+)
+- NPM
 
-#### Development Mode
+### Installation
+
+1.  Navigate to the client directory:
+    ```bash
+    cd client
+    ```
+
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+
+### Configuration
+
+Create a `.env` file in the root of the `client` directory:
+
+```env
+VITE_API_URL=http://localhost:3000/api
+```
+
+### Running the App
+
+Start the development server:
+
 ```bash
 npm run dev
 ```
-The application will usually be available at `http://localhost:5173`.
 
-#### Production Build
-To create an optimized production build:
-```bash
-npm run build
-```
+The application will be available at `http://localhost:5173`.
 
-## Key Features
-- **Dynamic Request Builder**: Support for GET, POST, PUT, DELETE, PATCH, OPTIONS, and HEAD.
-- **Collection Management**: Organize requests into folders (collections) with drag-and-drop support (coming soon) and bulk deletion.
-- **Variable Substitution**: Use `{{variable_name}}` in URLs and headers to swap values from collection or environment variables.
-- **Real-time Updates**: Immediate UI reactivity when importing/exporting Postman collections.
-- **Premium Aesthetics**: Glassmorphism dashboard, fluid animations, and high-contrast typography.
-- **WebSocket/Socket.IO Support**: Test real-time connections directly from the interface.
+## 🧩 Key Features & Logic
 
-## Project Structure
-- `src/components`: Reusable UI components (Sidebar, RequestBuilder, etc.).
-- `src/pages`: Main application views (MainApp, Login, Signup).
-- `src/store`: Redux slices and store configuration.
-- `src/utils`: Helper functions for variable substitution and URL parsing.
-- `src/index.css`: Global styles and custom Tailwind utilities.
+### Request Builder
+Located in `src/components/RequestBuilder`, this component handles the complexity of composing different types of requests. It manages:
+- **HTTP/WebSocket/Socket.IO** toggles.
+- **Header & Body** management (JSON, Form Data, etc.).
+- **Auth** configuration (Bearer, Basic).
+
+### Variable Substitution
+The application supports Postman-style variable substitution (e.g., `{{baseUrl}}`).
+- **Logic**: Implemented in `src/utils/variables.ts`.
+- **Scope**: Variables are resolved from the active **Environment** first, then the **Collection** variables.
+
+### Real-Time Testing
+- **Socket.IO**: Uses `socket.io-client` to connect to the target servers.
+- **WebSockets**: Uses native browser `WebSocket` API.
+- **Messages**: Incoming/Outgoing messages are tracked in local state within `MainApp.tsx` and displayed in `ResponseViewer`.
+
+## 📜 Scripts
+
+- `npm run dev`: Start development server.
+- `npm run build`: Build for production.
+- `npm run lint`: Run ESLint.
+- `npm run preview`: Preview the production build.
