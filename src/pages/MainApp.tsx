@@ -4,14 +4,15 @@ import Sidebar from '../components/Sidebar';
 import RequestBuilder from '../components/RequestBuilder';
 import ResponseViewer from '../components/ResponseViewer';
 import EnvironmentSwitcher from '../components/EnvironmentSwitcher';
-import { API_BASE_URL } from '../api/config';
 import RequestTabs from '../components/RequestTabs';
-import { substituteVariables } from '../utils/variables';
-import { LogOut, Send } from 'lucide-react';
-import { runPreRequestScript } from '../utils/scripts';
-import { io, Socket } from 'socket.io-client';
+import { LogOut, Send, Zap, ShieldCheck } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { fetchCollections, fetchIndependentRequests, updateRequest } from '../store/slices/collectionSlice';
+import { API_BASE_URL } from '../api/config';
+import { substituteVariables } from '../utils/variables';
+import { runPreRequestScript } from '../utils/scripts';
+import axios from 'axios';
+import { io, Socket } from 'socket.io-client';
 
 const MainApp = () => {
     const navigate = useNavigate();
@@ -39,7 +40,6 @@ const MainApp = () => {
     const [wsMessages, setWsMessages] = useState<any[]>([]);
     const sockets = useRef<Map<string, WebSocket | Socket>>(new Map());
 
-    // Sync state when active request changes (from sidebar)
     useEffect(() => {
         if (activeRequest && activeRequest.id !== (request as any).id) {
             setRequest(activeRequest);
@@ -48,11 +48,9 @@ const MainApp = () => {
         }
     }, [activeRequest.id]);
 
-    // Auto-save changes to the backend
     useEffect(() => {
         const timer = setTimeout(() => {
             if (activeRequestId && request && request.id) {
-                // Only save if meaningful properties changed
                 const changed =
                     request.url !== activeRequest.url ||
                     request.method !== activeRequest.method ||
@@ -67,7 +65,7 @@ const MainApp = () => {
                     dispatch(updateRequest(request));
                 }
             }
-        }, 1000); // 1s debounce
+        }, 1000);
 
         return () => clearTimeout(timer);
     }, [request, activeRequestId, dispatch, activeRequest]);
@@ -78,269 +76,207 @@ const MainApp = () => {
         setIsLoading(true);
         setResponse(null);
 
-        // Ensure current state is saved to backend on Send
         if (activeRequestId && request && request.id) {
             dispatch(updateRequest(request));
         }
 
         try {
-            // Resolve variables: Collection level first, then Environment (env overrides collection)
             const collection = collections.find((c: any) =>
-                c.requests.some((r: any) => r.id === request.id) ||
-                c.folders.some((f: any) => f.requests.some((r: any) => r.id === request.id))
+                (c.requests || []).some((r: any) => r.id === request.id) ||
+                (c.folders || []).some((f: any) => (f.requests || []).some((r: any) => r.id === request.id))
             );
 
             let currentVars = [
                 ...(collection?.variables || []),
                 ...(activeEnv?.variables || [])
             ];
+
             let currentHeaders = [...(request.headers || [])];
 
-            // 1. Run Pre-request Script if exists
-            if (request.preRequestScript) {
-                try {
+            // HTTP Request Logic
+            if (request.type === 'http' || !request.type) {
+                // Run Pre-request Script
+                if (request.preRequestScript) {
                     const result = runPreRequestScript(request.preRequestScript, currentVars, currentHeaders);
                     currentVars = result.variables;
                     currentHeaders = result.headers;
-                } catch (err: any) {
-                    setResponse({ error: `Script Error: ${err.message}` });
-                    setIsLoading(false);
-                    return;
                 }
-            }
 
-            let finalUrl = substituteVariables(request.url, currentVars);
-            let finalBody = request.body ? substituteVariables(request.body, currentVars) : request.body;
-            let finalHeaders = currentHeaders
-                .filter(h => h.enabled !== false)
-                .map((h: any) => ({
+                const substitutedUrl = substituteVariables(request.url, currentVars);
+                const substitutedBody = substituteVariables(request.body, currentVars);
+                const substitutedHeaders = (currentHeaders || []).map((h: any) => ({
+                    ...h,
                     key: substituteVariables(h.key, currentVars),
                     value: substituteVariables(h.value, currentVars)
                 }));
 
-            // Handle Auth substitution
-            if (request.auth) {
-                if (request.auth.type === 'bearer' && request.auth.bearer?.token) {
-                    const token = substituteVariables(request.auth.bearer.token, currentVars);
-                    finalHeaders.push({ key: 'Authorization', value: `Bearer ${token}` });
-                } else if (request.auth.type === 'basic' && request.auth.basic) {
-                    const user = substituteVariables(request.auth.basic.username || '', currentVars);
-                    const pass = substituteVariables(request.auth.basic.password || '', currentVars);
-                    const encoded = btoa(`${user}:${pass}`);
-                    finalHeaders.push({ key: 'Authorization', value: `Basic ${encoded}` });
-                }
-            }
-
-            // 2. Handle based on request type
-            if (request.type === 'http' || !request.type) {
-                const res = await fetch(`${API_BASE_URL}/proxy`, {
-                    method: 'POST',
+                const startTime = Date.now();
+                const res = await axios.post(`${API_BASE_URL}/proxy`, {
+                    url: substitutedUrl,
+                    method: request.method,
+                    headers: substitutedHeaders.reduce((acc: any, h: any) => ({ ...acc, [h.key]: h.value }), {}),
+                    data: request.method !== 'GET' ? substitutedBody : undefined,
+                    auth: request.auth
+                }, {
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-                    },
-                    body: JSON.stringify({
-                        url: finalUrl,
-                        method: request.method,
-                        headers: finalHeaders,
-                        body: finalBody,
-                    }),
+                        Authorization: `Bearer ${localStorage.getItem('authToken')}`
+                    }
                 });
 
-                const data = await res.json();
-                if (data.success) {
-                    setResponse(data.data);
-                } else {
-                    setResponse({ error: data.message || 'Request failed' });
-                }
-            } else if (request.type === 'websocket') {
-                handleWebSocketConnect(finalUrl);
-            } else if (request.type === 'socketio') {
-                handleSocketIOConnect(finalUrl);
+                setResponse({
+                    ...res.data,
+                    time: Date.now() - startTime
+                });
             }
-        } catch (error: any) {
-            setResponse({ error: error.message || 'Request failed' });
+            // WebSocket Logic
+            else if (request.type === 'websocket') {
+                const substitutedUrl = substituteVariables(request.url, currentVars);
+                const ws = new WebSocket(substitutedUrl);
+                sockets.current.set(request.id, ws);
+
+                ws.onopen = () => {
+                    setWsMessages(prev => [...prev, { type: 'system', text: 'Connected to ' + substitutedUrl, time: new Date() }]);
+                };
+                ws.onmessage = (event) => {
+                    setWsMessages(prev => [...prev, { type: 'received', text: event.data, time: new Date() }]);
+                };
+                ws.onerror = () => {
+                    setWsMessages(prev => [...prev, { type: 'error', text: 'WebSocket Error', time: new Date() }]);
+                };
+            }
+            // Socket.IO Logic
+            else if (request.type === 'socketio') {
+                const substitutedUrl = substituteVariables(request.url, currentVars);
+                const socket = io(substitutedUrl);
+                sockets.current.set(request.id, socket);
+
+                socket.on('connect', () => {
+                    setWsMessages(prev => [...prev, { type: 'system', text: 'Socket.IO Connected', time: new Date() }]);
+                });
+                socket.onAny((event, ...args) => {
+                    setWsMessages(prev => [...prev, { type: 'received', text: `${event}: ${JSON.stringify(args)}`, time: new Date() }]);
+                });
+            }
+        } catch (e: any) {
+            setResponse({
+                status: e.response?.status || 500,
+                data: e.response?.data || { error: e.message }
+            });
         } finally {
-            if (request.type === 'http' || !request.type) {
-                setIsLoading(false);
-            }
-        }
-    };
-
-    const handleWebSocketConnect = (url: string) => {
-        if (sockets.current.has(request.id)) {
-            const existing = sockets.current.get(request.id) as WebSocket;
-            existing.close();
-            sockets.current.delete(request.id);
-        }
-
-        try {
-            const ws = new WebSocket(url);
-            setWsMessages([{ type: 'info', text: `Connecting to ${url}...`, time: new Date() }]);
-
-            ws.onopen = () => {
-                setWsMessages(prev => [...prev, { type: 'success', text: 'Connected!', time: new Date() }]);
-                setIsLoading(false);
-            };
-            ws.onmessage = (event) => {
-                setWsMessages(prev => [...prev, { type: 'received', text: event.data, time: new Date() }]);
-            };
-            ws.onclose = () => {
-                setWsMessages(prev => [...prev, { type: 'info', text: 'Disconnected', time: new Date() }]);
-                sockets.current.delete(request.id);
-                setIsLoading(false);
-            };
-            ws.onerror = () => {
-                setWsMessages(prev => [...prev, { type: 'error', text: 'WebSocket Error', time: new Date() }]);
-                setIsLoading(false);
-            };
-
-            sockets.current.set(request.id, ws);
-        } catch (error: any) {
-            setResponse({ error: error.message });
             setIsLoading(false);
         }
     };
 
-    const handleSocketIOConnect = (url: string) => {
-        if (sockets.current.has(request.id)) {
-            const existing = sockets.current.get(request.id) as Socket;
-            existing.disconnect();
-            sockets.current.delete(request.id);
-        }
-
-        try {
-            const socket = io(url);
-            setWsMessages([{ type: 'info', text: `Socket.io Connecting to ${url}...`, time: new Date() }]);
-
-            socket.on('connect', () => {
-                setWsMessages(prev => [...prev, { type: 'success', text: 'Socket.io Connected!', time: new Date() }]);
-                setIsLoading(false);
-            });
-            socket.onAny((event, ...args) => {
-                setWsMessages(prev => [...prev, { type: 'received', text: `${event}: ${JSON.stringify(args)}`, time: new Date() }]);
-            });
-            socket.on('disconnect', () => {
-                setWsMessages(prev => [...prev, { type: 'info', text: 'Socket.io Disconnected', time: new Date() }]);
-                sockets.current.delete(request.id);
-                setIsLoading(false);
-            });
-            socket.on('connect_error', (err) => {
-                setWsMessages(prev => [...prev, { type: 'error', text: `Connection Error: ${err.message}`, time: new Date() }]);
-                setIsLoading(false);
-            });
-
-            sockets.current.set(request.id, socket);
-        } catch (error: any) {
-            setResponse({ error: error.message });
-            setIsLoading(false);
-        }
-    };
-
-    const handleSendMessage = (message: string) => {
+    const handleSendMessage = (text: string) => {
         const socket = sockets.current.get(request.id);
-        if (!socket) return;
-
-        if (socket instanceof WebSocket) {
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(message);
-                setWsMessages(prev => [...prev, { type: 'sent', text: message, time: new Date() }]);
-            }
-        } else {
-            // Socket.io
-            socket.emit('message', message);
-            setWsMessages(prev => [...prev, { type: 'sent', text: message, time: new Date() }]);
-        }
-    };
-
-    const handleLogout = async () => {
-        try {
-            await fetch(`${API_BASE_URL}/auth/logout`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        if (socket) {
+            if (socket instanceof WebSocket) {
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(text);
+                    setWsMessages(prev => [...prev, { type: 'sent', text, time: new Date() }]);
                 }
-            });
-        } catch (error) {
-            console.error('Logout failed:', error);
-        } finally {
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('user');
-            navigate('/login');
+            } else {
+                (socket as any).emit('message', text); // Or use custom events
+                setWsMessages(prev => [...prev, { type: 'sent', text, time: new Date() }]);
+            }
         }
     };
 
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const handleLogout = () => {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        navigate('/login');
+    };
 
     return (
-        <div className="flex h-screen bg-slate-100/50 text-slate-900 overflow-hidden font-sans pb-12">
+        <div className="flex h-screen bg-slate-50/50">
             <Sidebar />
-            <div className="flex-1 flex flex-col min-w-0 bg-white/40 backdrop-blur-xl">
-                {/* Header */}
-                <header className="h-16 flex items-center justify-between px-8 bg-white/80 border-b border-slate-200 backdrop-blur-lg z-10 shadow-sm">
-                    <div className="flex items-center gap-6 flex-1 min-w-0">
-                        <h1 className="text-xl font-extrabold text-slate-900 tracking-tight shrink-0">Postman Clone</h1>
-                        <div className="h-6 w-[1px] bg-slate-200 hidden md:block" />
-                        <EnvironmentSwitcher />
-                    </div>
+
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 shrink-0 relative z-10">
                     <div className="flex items-center gap-4">
-                        <div className="flex flex-col items-end hidden sm:flex">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Authenticated as</span>
-                            <span className="text-sm font-semibold text-slate-700">{user.email}</span>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-lg text-blue-600">
+                            <Zap size={18} className="fill-blue-600" />
+                            <span className="font-black text-sm tracking-tight uppercase">Postman Clone</span>
                         </div>
-                        <div className="h-8 w-[1px] bg-slate-200 mx-2 hidden sm:block" />
-                        <button
-                            onClick={handleLogout}
-                            className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all font-semibold active:scale-95"
-                        >
-                            <LogOut size={18} />
-                            <span>Logout</span>
-                        </button>
+                        <div className="h-4 w-px bg-slate-200" />
+                        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest truncate max-w-[200px]">
+                            {activeRequest?.id ? activeRequest.name : 'Dashboard'}
+                        </h2>
+                    </div>
+
+                    <div className="flex items-center gap-6">
+                        <EnvironmentSwitcher />
+                        <div className="h-8 w-px bg-slate-200" />
+                        <div className="flex items-center gap-3">
+                            <div className="text-right hidden sm:block">
+                                <p className="text-xs font-bold text-slate-900 leading-none mb-1">
+                                    {(JSON.parse(localStorage.getItem('user') || '{}').email || 'User').split('@')[0]}
+                                </p>
+                                <p className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter leading-none">
+                                    Free Plan
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                title="Sign Out"
+                            >
+                                <LogOut size={20} />
+                            </button>
+                        </div>
                     </div>
                 </header>
 
-                <RequestTabs />
-
-                {/* Main Content */}
-                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                    <div className="max-w-6xl mx-auto space-y-8 pb-12">
+                <main className="flex-1 flex flex-col overflow-hidden relative">
+                    <RequestTabs />
+                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-white/50">
                         {activeRequestId ? (
-                            <>
-                                <section className="premium-card p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Request Configuration</h2>
+                            <div className="max-w-[1400px] mx-auto p-8">
+                                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <RequestBuilder
                                         request={request}
                                         setRequest={setRequest}
                                         onSend={handleSendRequest}
                                         isLoading={isLoading}
                                     />
-                                </section>
-
-                                {(response || wsMessages.length > 0) && (
-                                    <section className="animate-in fade-in slide-in-from-bottom-6 duration-700">
-                                        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Response Viewer</h2>
-                                        <ResponseViewer
-                                            type={request.type}
-                                            response={response}
-                                            messages={wsMessages}
-                                            onSendMessage={handleSendMessage}
-                                        />
-                                    </section>
-                                )}
-                            </>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-[60vh] text-slate-300 animate-in fade-in zoom-in duration-500">
-                                <div className="p-8 bg-white rounded-3xl shadow-xl shadow-slate-200/50 mb-6 border border-slate-100">
-                                    <Send size={64} className="text-blue-500/20" />
+                                    <ResponseViewer
+                                        type={request.type}
+                                        response={response}
+                                        messages={wsMessages}
+                                        onSendMessage={handleSendMessage}
+                                    />
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-800 mb-3">Ready to explore?</h3>
-                                <p className="max-w-xs text-center text-slate-500 font-medium leading-relaxed">
-                                    Select a request from the sidebar or click <span className="text-blue-600 font-bold">"New"</span> to start testing your APIs with Postman Clone.
+                            </div>
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center p-12 text-center">
+                                <div className="w-24 h-24 bg-slate-100 rounded-[2.5rem] flex items-center justify-center mb-8 animate-bounce transition-all duration-1000">
+                                    <Send size={40} className="text-slate-300" />
+                                </div>
+                                <h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">Ready to test?</h3>
+                                <p className="text-slate-500 max-w-sm mb-10 font-medium leading-relaxed">
+                                    Select a request from the sidebar or click <span className="text-blue-600 font-bold">New Request</span> to get started. 🚀
                                 </p>
+                                <div className="grid grid-cols-2 gap-4 max-w-md w-full">
+                                    <div className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:border-blue-200 transition-all group">
+                                        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <Zap size={20} />
+                                        </div>
+                                        <p className="font-bold text-sm text-slate-900 mb-1">Fast Execution</p>
+                                        <p className="text-xs text-slate-400">Tested and optimized for speed</p>
+                                    </div>
+                                    <div className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:border-purple-200 transition-all group">
+                                        <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <ShieldCheck size={20} />
+                                        </div>
+                                        <p className="font-bold text-sm text-slate-900 mb-1">Secure Auth</p>
+                                        <p className="text-xs text-slate-400">Bearer, Basic and more</p>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
-                </div>
+                </main>
             </div>
         </div>
     );

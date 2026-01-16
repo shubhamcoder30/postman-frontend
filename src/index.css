@@ -48,6 +48,14 @@
   .premium-card {
     @apply bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow;
   }
+
+  .mesh-gradient {
+    background-color: #f8fafc;
+    background-image:
+      radial-gradient(at 0% 0%, hsla(210, 100%, 98%, 1) 0, transparent 50%),
+      radial-gradient(at 50% 0%, hsla(217, 91%, 95%, 1) 0, transparent 50%),
+      radial-gradient(at 100% 0%, hsla(220, 100%, 98%, 1) 0, transparent 50%);
+  }
 }
 
 /* Custom Scrollbar */

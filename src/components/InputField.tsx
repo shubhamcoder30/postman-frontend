@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import React, { useState } from 'react';
+import { Eye, EyeOff, type LucideIcon } from 'lucide-react';
 
 interface InputFieldProps {
     label: string;
@@ -12,6 +12,7 @@ interface InputFieldProps {
     error?: string;
     touched?: boolean;
     required?: boolean;
+    icon?: LucideIcon;
 }
 
 const InputField = ({
@@ -25,6 +26,7 @@ const InputField = ({
     error,
     touched,
     required = false,
+    icon: Icon
 }: InputFieldProps) => {
     const [showPassword, setShowPassword] = useState(false);
     const isPassword = type === 'password';
@@ -32,21 +34,26 @@ const InputField = ({
     const hasError = touched && error;
 
     return (
-        <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-300">
+        <div className="space-y-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">
                 {label}
-                {required && <span className="text-red-500 ml-1">*</span>}
+                {required && <span className="text-red-500 ml-1 font-bold">*</span>}
             </label>
-            <div className="relative">
+            <div className="relative group">
+                {Icon && (
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                        <Icon size={18} />
+                    </div>
+                )}
                 <input
                     type={inputType}
                     name={name}
                     value={value}
                     onChange={onChange}
                     onBlur={onBlur}
-                    className={`w-full px-4 py-2 bg-gray-700 border rounded-md text-white focus:outline-none focus:ring-2 transition-colors ${hasError
-                            ? 'border-red-500 focus:ring-red-500'
-                            : 'border-gray-600 focus:ring-blue-500'
+                    className={`w-full ${Icon ? 'pl-11' : 'px-4'} pr-10 py-3 bg-white border rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all ${hasError
+                        ? 'border-red-500 focus:ring-red-500/10'
+                        : 'border-slate-200 focus:border-blue-500 focus:ring-blue-500/10 shadow-sm'
                         }`}
                     placeholder={placeholder}
                 />
@@ -54,15 +61,14 @@ const InputField = ({
                     <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
                     >
-                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                 )}
             </div>
             {hasError && (
-                <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                    <span className="inline-block w-1 h-1 bg-red-500 rounded-full"></span>
+                <p className="text-red-500 text-[11px] font-medium mt-1 ml-1 animate-in fade-in slide-in-from-top-1">
                     {error}
                 </p>
             )}
