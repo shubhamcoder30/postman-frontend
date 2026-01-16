@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
@@ -9,6 +9,8 @@ import { API_BASE_URL } from '../api/config';
 import RequestTabs from '../components/RequestTabs';
 import { substituteVariables } from '../utils/variables';
 import { LogOut } from 'lucide-react';
+import { runPreRequestScript } from '../utils/scripts';
+import { io, Socket } from 'socket.io-client';
 import type { RootState, AppDispatch } from '../store';
 import { fetchCollections, fetchIndependentRequests, updateRequest } from '../store/slices/collectionSlice';
 
@@ -29,17 +31,21 @@ const MainApp = () => {
         url: '',
         headers: [],
         body: '',
+        type: 'http'
     };
 
     const [request, setRequest] = useState(activeRequest);
     const [response, setResponse] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [wsMessages, setWsMessages] = useState<any[]>([]);
+    const sockets = useRef<Map<string, WebSocket | Socket>>(new Map());
 
     // Sync state when active request changes (from sidebar)
     useEffect(() => {
         if (activeRequest && activeRequest.id !== (request as any).id) {
             setRequest(activeRequest);
             setResponse(null);
+            setWsMessages([]);
         }
     }, [activeRequest.id]);
 
@@ -54,6 +60,8 @@ const MainApp = () => {
                     JSON.stringify(request.headers) !== JSON.stringify(activeRequest.headers) ||
                     request.body !== activeRequest.body ||
                     request.bodyType !== activeRequest.bodyType ||
+                    request.type !== activeRequest.type ||
+                    request.preRequestScript !== activeRequest.preRequestScript ||
                     JSON.stringify(request.auth) !== JSON.stringify(activeRequest.auth);
 
                 if (changed) {
@@ -63,7 +71,7 @@ const MainApp = () => {
         }, 1000); // 1s debounce
 
         return () => clearTimeout(timer);
-    }, [request, activeRequestId, dispatch]);
+    }, [request, activeRequestId, dispatch, activeRequest]);
 
     const activeEnv = environments.find((env: any) => env.id === activeEnvironmentId);
 
@@ -77,67 +85,169 @@ const MainApp = () => {
         }
 
         try {
-            let finalUrl = request.url;
-            let finalBody = request.body;
-            let finalHeaders = [...(request.headers || [])];
-
             // Resolve variables: Collection level first, then Environment (env overrides collection)
             const collection = collections.find((c: any) =>
                 c.requests.some((r: any) => r.id === request.id) ||
                 c.folders.some((f: any) => f.requests.some((r: any) => r.id === request.id))
             );
 
-            const allVars = [
+            let currentVars = [
                 ...(collection?.variables || []),
                 ...(activeEnv?.variables || [])
             ];
+            let currentHeaders = [...(request.headers || [])];
 
-            if (allVars.length > 0) {
-                finalUrl = substituteVariables(request.url, allVars);
-                if (request.body) {
-                    finalBody = substituteVariables(request.body, allVars);
-                }
-                finalHeaders = finalHeaders.map(h => ({
-                    key: substituteVariables(h.key, allVars),
-                    value: substituteVariables(h.value, allVars)
-                }));
-
-                // Handle Auth substitution
-                if (request.auth) {
-                    if (request.auth.type === 'bearer' && request.auth.bearer?.token) {
-                        const token = substituteVariables(request.auth.bearer.token, allVars);
-                        finalHeaders.push({ key: 'Authorization', value: `Bearer ${token}` });
-                    } else if (request.auth.type === 'basic' && request.auth.basic) {
-                        const user = substituteVariables(request.auth.basic.username || '', allVars);
-                        const pass = substituteVariables(request.auth.basic.password || '', allVars);
-                        const encoded = btoa(`${user}:${pass}`);
-                        finalHeaders.push({ key: 'Authorization', value: `Basic ${encoded}` });
-                    }
+            // 1. Run Pre-request Script if exists
+            if (request.preRequestScript) {
+                try {
+                    const result = runPreRequestScript(request.preRequestScript, currentVars, currentHeaders);
+                    currentVars = result.variables;
+                    currentHeaders = result.headers;
+                } catch (err: any) {
+                    setResponse({ error: `Script Error: ${err.message}` });
+                    setIsLoading(false);
+                    return;
                 }
             }
-            const res = await fetch(`${API_BASE_URL}/proxy`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    url: finalUrl,
-                    method: request.method,
-                    headers: finalHeaders,
-                    body: finalBody,
-                }),
-            });
 
-            const data = await res.json();
-            if (data.success) {
-                setResponse(data.data);
-            } else {
-                setResponse({ error: data.message || 'Request failed' });
+            let finalUrl = substituteVariables(request.url, currentVars);
+            let finalBody = request.body ? substituteVariables(request.body, currentVars) : request.body;
+            let finalHeaders = currentHeaders
+                .filter(h => h.enabled !== false)
+                .map((h: any) => ({
+                    key: substituteVariables(h.key, currentVars),
+                    value: substituteVariables(h.value, currentVars)
+                }));
+
+            // Handle Auth substitution
+            if (request.auth) {
+                if (request.auth.type === 'bearer' && request.auth.bearer?.token) {
+                    const token = substituteVariables(request.auth.bearer.token, currentVars);
+                    finalHeaders.push({ key: 'Authorization', value: `Bearer ${token}` });
+                } else if (request.auth.type === 'basic' && request.auth.basic) {
+                    const user = substituteVariables(request.auth.basic.username || '', currentVars);
+                    const pass = substituteVariables(request.auth.basic.password || '', currentVars);
+                    const encoded = btoa(`${user}:${pass}`);
+                    finalHeaders.push({ key: 'Authorization', value: `Basic ${encoded}` });
+                }
+            }
+
+            // 2. Handle based on request type
+            if (request.type === 'http' || !request.type) {
+                const res = await fetch(`${API_BASE_URL}/proxy`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: finalUrl,
+                        method: request.method,
+                        headers: finalHeaders,
+                        body: finalBody,
+                    }),
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    setResponse(data.data);
+                } else {
+                    setResponse({ error: data.message || 'Request failed' });
+                }
+            } else if (request.type === 'websocket') {
+                handleWebSocketConnect(finalUrl);
+            } else if (request.type === 'socketio') {
+                handleSocketIOConnect(finalUrl);
             }
         } catch (error: any) {
             setResponse({ error: error.message || 'Request failed' });
         } finally {
+            if (request.type === 'http' || !request.type) {
+                setIsLoading(false);
+            }
+        }
+    };
+
+    const handleWebSocketConnect = (url: string) => {
+        if (sockets.current.has(request.id)) {
+            const existing = sockets.current.get(request.id) as WebSocket;
+            existing.close();
+            sockets.current.delete(request.id);
+        }
+
+        try {
+            const ws = new WebSocket(url);
+            setWsMessages([{ type: 'info', text: `Connecting to ${url}...`, time: new Date() }]);
+
+            ws.onopen = () => {
+                setWsMessages(prev => [...prev, { type: 'success', text: 'Connected!', time: new Date() }]);
+                setIsLoading(false);
+            };
+            ws.onmessage = (event) => {
+                setWsMessages(prev => [...prev, { type: 'received', text: event.data, time: new Date() }]);
+            };
+            ws.onclose = () => {
+                setWsMessages(prev => [...prev, { type: 'info', text: 'Disconnected', time: new Date() }]);
+                sockets.current.delete(request.id);
+                setIsLoading(false);
+            };
+            ws.onerror = () => {
+                setWsMessages(prev => [...prev, { type: 'error', text: 'WebSocket Error', time: new Date() }]);
+                setIsLoading(false);
+            };
+
+            sockets.current.set(request.id, ws);
+        } catch (error: any) {
+            setResponse({ error: error.message });
             setIsLoading(false);
+        }
+    };
+
+    const handleSocketIOConnect = (url: string) => {
+        if (sockets.current.has(request.id)) {
+            const existing = sockets.current.get(request.id) as Socket;
+            existing.disconnect();
+            sockets.current.delete(request.id);
+        }
+
+        try {
+            const socket = io(url);
+            setWsMessages([{ type: 'info', text: `Socket.io Connecting to ${url}...`, time: new Date() }]);
+
+            socket.on('connect', () => {
+                setWsMessages(prev => [...prev, { type: 'success', text: 'Socket.io Connected!', time: new Date() }]);
+                setIsLoading(false);
+            });
+            socket.onAny((event, ...args) => {
+                setWsMessages(prev => [...prev, { type: 'received', text: `${event}: ${JSON.stringify(args)}`, time: new Date() }]);
+            });
+            socket.on('disconnect', () => {
+                setWsMessages(prev => [...prev, { type: 'info', text: 'Socket.io Disconnected', time: new Date() }]);
+                sockets.current.delete(request.id);
+                setIsLoading(false);
+            });
+            socket.on('connect_error', (err) => {
+                setWsMessages(prev => [...prev, { type: 'error', text: `Connection Error: ${err.message}`, time: new Date() }]);
+                setIsLoading(false);
+            });
+
+            sockets.current.set(request.id, socket);
+        } catch (error: any) {
+            setResponse({ error: error.message });
+            setIsLoading(false);
+        }
+    };
+
+    const handleSendMessage = (message: string) => {
+        const socket = sockets.current.get(request.id);
+        if (!socket) return;
+
+        if (socket instanceof WebSocket) {
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(message);
+                setWsMessages(prev => [...prev, { type: 'sent', text: message, time: new Date() }]);
+            }
+        } else {
+            // Socket.io
+            socket.emit('message', message);
+            setWsMessages(prev => [...prev, { type: 'sent', text: message, time: new Date() }]);
         }
     };
 
@@ -195,7 +305,14 @@ const MainApp = () => {
                                     onSend={handleSendRequest}
                                     isLoading={isLoading}
                                 />
-                                {response && <ResponseViewer response={response} />}
+                                {(response || wsMessages.length > 0) && (
+                                    <ResponseViewer
+                                        type={request.type}
+                                        response={response}
+                                        messages={wsMessages}
+                                        onSendMessage={handleSendMessage}
+                                    />
+                                )}
                             </>
                         ) : (
                             <div className="flex items-center justify-center h-full text-gray-400">

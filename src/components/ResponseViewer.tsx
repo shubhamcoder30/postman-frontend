@@ -1,9 +1,16 @@
-import { useState } from 'react';
-import { Clock, Database, Copy, FileText, List, Eye } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Clock, Database, Copy, FileText, List, Eye, Send, Terminal } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+interface Message {
+    type: 'sent' | 'received' | 'info' | 'error' | 'success';
+    text: string;
+    time: Date;
+}
+
 interface ResponseViewerProps {
-    response: {
+    type?: 'http' | 'websocket' | 'socketio';
+    response?: {
         status: number;
         statusText: string;
         headers: Record<string, string>;
@@ -12,13 +19,37 @@ interface ResponseViewerProps {
         size: number;
         error?: string;
     };
+    messages?: Message[];
+    onSendMessage?: (msg: string) => void;
 }
 
-const ResponseViewer: React.FC<ResponseViewerProps> = ({ response }) => {
-    const [activeTab, setActiveTab] = useState<'body' | 'headers' | 'preview'>('body');
+const ResponseViewer: React.FC<ResponseViewerProps> = ({ type = 'http', response, messages = [], onSendMessage }) => {
+    const [activeTab, setActiveTab] = useState<'body' | 'headers' | 'preview' | 'messages'>('body');
     const [bodyView, setBodyView] = useState<'pretty' | 'raw'>('pretty');
+    const [messageInput, setMessageInput] = useState('');
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    if (response.error) {
+    useEffect(() => {
+        if (type !== 'http') {
+            setActiveTab('messages');
+        } else {
+            setActiveTab('body');
+        }
+    }, [type]);
+
+    useEffect(() => {
+        if (activeTab === 'messages') {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, activeTab]);
+
+    const handleSend = () => {
+        if (!messageInput.trim() || !onSendMessage) return;
+        onSendMessage(messageInput);
+        setMessageInput('');
+    };
+
+    if (response?.error) {
         return (
             <div className="p-5 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-600 shadow-sm animate-in fade-in slide-in-from-top-2">
                 <div className="p-2 bg-red-100 rounded-lg">
@@ -28,6 +59,62 @@ const ResponseViewer: React.FC<ResponseViewerProps> = ({ response }) => {
             </div>
         );
     }
+
+    if (type !== 'http') {
+        return (
+            <div className="flex flex-col border border-gray-200 rounded-2xl bg-white shadow-sm overflow-hidden animate-in fade-in duration-300">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                    <div className="flex items-center gap-2">
+                        <Terminal size={16} className="text-blue-500" />
+                        <span className="text-sm font-bold text-gray-700 capitalize">{type} Terminal</span>
+                    </div>
+                </div>
+
+                <div className="flex-1 min-h-[400px] flex flex-col bg-gray-900 overflow-hidden">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-sm">
+                        {messages.length === 0 && (
+                            <div className="text-gray-500 italic text-center py-10">No messages yet. Connect to see traffic.</div>
+                        )}
+                        {messages.map((msg, i) => (
+                            <div key={i} className={`flex flex-col ${msg.type === 'sent' ? 'items-end' : 'items-start'}`}>
+                                <div className={`max-w-[80%] rounded-lg px-3 py-1.5 break-all ${msg.type === 'sent' ? 'bg-blue-600 text-white' :
+                                        msg.type === 'received' ? 'bg-gray-800 text-gray-200' :
+                                            msg.type === 'info' ? 'text-blue-400 text-xs italic' :
+                                                msg.type === 'error' ? 'text-red-400 text-xs font-bold' :
+                                                    'text-green-400 text-xs font-bold'
+                                    }`}>
+                                    {msg.text}
+                                </div>
+                                <span className="text-[10px] text-gray-600 mt-1">
+                                    {msg.time.toLocaleTimeString()}
+                                </span>
+                            </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    <div className="p-4 border-t border-gray-800 bg-gray-950/50 flex gap-2">
+                        <input
+                            type="text"
+                            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            placeholder="Message to send..."
+                            value={messageInput}
+                            onChange={(e) => setMessageInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                        />
+                        <button
+                            onClick={handleSend}
+                            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                        >
+                            <Send size={18} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!response) return null;
 
     const formatSize = (bytes: number) => {
         if (!bytes || isNaN(bytes)) return '0 B';
@@ -76,9 +163,6 @@ const ResponseViewer: React.FC<ResponseViewerProps> = ({ response }) => {
                         title="Copy Body"
                     >
                         <Copy size={16} />
-                    </button>
-                    <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all" title="Save Response">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
                     </button>
                 </div>
             </div>
